@@ -1,0 +1,21 @@
+# Dependencies are fetched from the pinned upstream SDK revision.
+/vendor/
+/build*/
+/artifacts/
+/dist/
+/backups/
+/mockups/
+/assets/
+/.vs/
+/.vscode/
+*.obj
+*.pdb
+*.exe
+*.dll
+*.lib
+*.exp
+*.vst3
+*.zip
+*.wav
+*.user
+*.suo
