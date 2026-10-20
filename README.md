@@ -10,6 +10,14 @@ The reverb runs between the input and output conversion stages. Its selectable
 
 ![Bulkhead 1.0.0 interface](docs/images/bulkhead.png)
 
+## Download
+
+[Bulkhead 1.0.0 for Windows x64 (VST3)](https://github.com/Phaos2000/Bulkhead/releases/tag/v1.0.0)
+
+Download `Bulkhead-1.0.0-Windows-x64.zip` from the release assets. Extract it
+and copy the entire `Bulkhead.vst3` folder to your host's VST3 search directory.
+The automatic GitHub source archives contain source code, not an installed plugin.
+
 ## Signal path
 
 ```text
