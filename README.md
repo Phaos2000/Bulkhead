@@ -1,3 +1,5 @@
+[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/phaos)
+
 # Bulkhead
 
 Bulkhead 1.0.0 is a Windows x64 VST3 reverb by Phaos. It combines a finite
@@ -17,8 +19,6 @@ The reverb runs between the input and output conversion stages. Its selectable
 Download `Bulkhead-1.0.0-Windows-x64.zip` from the release assets. Extract it
 and copy the entire `Bulkhead.vst3` folder to your host's VST3 search directory.
 The automatic GitHub source archives contain source code, not an installed plugin.
-
-[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/phaos)
 
 ## Signal path
 
