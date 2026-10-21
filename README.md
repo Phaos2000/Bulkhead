@@ -2,7 +2,7 @@
 
 # Bulkhead
 
-Bulkhead 1.0.0 is a Windows x64 VST3 reverb by Phaos. It combines a finite
+Bulkhead is a Windows x64 VST3 reverb by Phaos. It combines a finite
 signed reflection-packet engine with Sound Blaster Pro II ADC/DAC audio-path
 emulation: clocked unsigned 8-bit PCM conversion, held samples, and selectable
 input and output filters.
@@ -10,15 +10,17 @@ input and output filters.
 The reverb runs between the input and output conversion stages. Its selectable
 8-, 12-, and 16-bit internal precision is separate from the 8-bit converters.
 
-![Bulkhead 1.0.0 interface](docs/images/bulkhead.png)
+![Bulkhead interface](docs/images/bulkhead.png)
 
 ## Download
 
-[Bulkhead 1.0.0 for Windows x64 (VST3)](https://github.com/Phaos2000/Bulkhead/releases/tag/v1.0.0)
+[Bulkhead for Windows x64 (VST3)](https://github.com/Phaos2000/Bulkhead/releases/latest)
 
-Download `Bulkhead-1.0.0-Windows-x64.zip` from the release assets. Extract it
+Download the Windows x64 ZIP from the release assets. Extract it
 and copy the entire `Bulkhead.vst3` folder to your host's VST3 search directory.
 The automatic GitHub source archives contain source code, not an installed plugin.
+
+See the [changelog](CHANGELOG.md) for version changes and validation results.
 
 ## Signal path
 
@@ -149,6 +151,13 @@ Copy the entire bundle to your host's VST3 search directory, commonly
 Tests write diagnostic logs/audio and temporary presets under `artifacts/`.
 The diagnostic audio is generated from synthetic excitation. It is not a
 collection of sampled instruments or commercial recordings.
+
+For output parity and CPU comparisons with an earlier build, build the
+`bulkhead_compare` target. Run it with the old and new binary paths (the
+`Contents/x86_64-win/Bulkhead.vst3` files inside each bundle). It compares
+mono/stereo, 32/64-bit processing, sample rates, automation, and silence flags.
+Append `--benchmark` to measure seven alternating old/new runs per workload
+on one CPU core. Reported times are medians; results depend on the computer.
 
 This repository contains source code. Historical archives, local build files,
 and downloaded reference artwork are excluded. Before redistributing a build,

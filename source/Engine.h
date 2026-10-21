@@ -34,7 +34,7 @@ inline int16_t pcmWord(double x,int bits,bool truncate=false) {
     if(!std::isfinite(x))return 0;
     bits=std::clamp(bits,8,16);const int step=1<<(16-bits);
     const double code=std::clamp(x,-1.,1.)*(32768./step);
-    const int q=int(truncate?std::trunc(code):std::round(code))*step;
+    const int q=(truncate?int(code):roundedPcmCode(code))*step;
     return int16_t(std::clamp(q,-32768,32768-step));
 }
 inline int16_t pcmWord(double x,double bits,bool truncate=false) {
@@ -55,18 +55,31 @@ inline double linearPCM(double x,double bits){return pcmWord(x,bits)/32768.;}
 // Only transitions blend modes/adjacent bit depths; steady processing is integer.
 struct Arithmetic {
     int low=10; double fraction=0,truncate=0;
-    Arithmetic(double bits,double mode):low(std::clamp(int(bits),8,16)),fraction(bits-low),truncate(clean(mode)){}
-    int word(int32_t q30,int bits)const {
-        const int step=1<<(16-bits),shift=31-bits,sign=q30<0?-1:1;
+    struct Scale {int step,shift;uint32_t half;};
+    static Scale scale(int bits){return {1<<(16-bits),31-bits,uint32_t(1)<<(30-bits)};}
+    Scale lower,upper;
+    Arithmetic(double bits,double mode):low(std::clamp(int(bits),8,16)),fraction(bits-low),truncate(clean(mode)),lower(scale(low)),upper(scale(std::min(16,low+1))){}
+    int word(int32_t q30,const Scale& s)const {
+        const int step=s.step,shift=s.shift,sign=q30<0?-1:1;
         const uint32_t magnitude=q30<0?0u-uint32_t(q30):uint32_t(q30);
         const int t=sign*int(magnitude>>shift)*step;
         if(truncate==1.)return t;
-        const int r=sign*int((magnitude+(uint32_t(1)<<(shift-1)))>>shift)*step;
+        const int r=sign*int((magnitude+s.half)>>shift)*step;
         return truncate==0.?r:int(std::lround(r+(t-r)*truncate));
     }
     int operator()(int32_t q30)const {
-        const int a=word(q30,low);
-        return fraction==0.?a:int(std::lround(a+(word(q30,std::min(16,low+1))-a)*fraction));
+        const int a=word(q30,lower);
+        return fraction==0.?a:int(std::lround(a+(word(q30,upper)-a)*fraction));
+    }
+};
+// Steady reflection kernels use the same integer formula without testing the
+// precision/mode for every product. Transitions retain the general arithmetic.
+template<bool Truncate> struct FixedArithmetic {
+    Arithmetic::Scale scale;
+    int operator()(int32_t q30)const {
+        const int sign=q30<0?-1:1;
+        const uint32_t magnitude=q30<0?0u-uint32_t(q30):uint32_t(q30);
+        return sign*int((magnitude+(Truncate?0u:scale.half))>>scale.shift)*scale.step;
     }
 };
 
@@ -141,6 +154,22 @@ public:
         int32_t sum[2]{};
         const bool moving=heads.moving();
         const int fadeQ=moving?nearestInt(heads.blend()*32768):32768;
+        if(arithmetic.fraction==0.&&arithmetic.truncate==0.)reflect(sum,moving,fadeQ,FixedArithmetic<false>{arithmetic.lower});
+        else if(arithmetic.fraction==0.&&arithmetic.truncate==1.)reflect(sum,moving,fadeQ,FixedArithmetic<true>{arithmetic.lower});
+        else reflect(sum,moving,fadeQ,arithmetic);
+        write=(write+1)&(capacity-1);
+        heads.advance();
+        if(tapReductionTicks>0&&--tapReductionTicks==0)tapLimit=targetTapLimit;
+        // Stereo spacing lives in the read positions. No channel swaps or
+        // mid-side mixing: one input channel never feeds the opposite output.
+        outL=linearPCM(sum[0]/32768.*1.4,bits);
+        outR=linearPCM(sum[1]/32768.*1.4,bits);
+    }
+private:
+    template<class Quantize> void reflect(int32_t (&sum)[2],bool moving,int fadeQ,const Quantize& arithmetic){
+        if(moving)reflect<true>(sum,fadeQ,arithmetic);else reflect<false>(sum,fadeQ,arithmetic);
+    }
+    template<bool Moving,class Quantize> void reflect(int32_t (&sum)[2],int fadeQ,const Quantize& arithmetic){
         activeTaps=0;
         for(int i=0;i<tapLimit;++i) {
             int gain=gainWords[i];
@@ -151,22 +180,14 @@ public:
                 // Independent channels; each path is a short signed packet,
                 // rather than one full-gain delayed copy of the input.
                 int sample=packet(ch,i,false,arithmetic);
-                if(moving)sample=int((int32_t(packet(ch,i,true,arithmetic))*(32768-fadeQ)+int32_t(sample)*fadeQ)/32768);
+                if constexpr(Moving)sample=int((int32_t(packet(ch,i,true,arithmetic))*(32768-fadeQ)+int32_t(sample)*fadeQ)/32768);
                 // Scale each product before the sum: bounded 32-bit accumulation.
                 sum[ch]+=arithmetic(int32_t(sample)*gain);
             }
         }
-        write=(write+1)&(capacity-1);
-        heads.advance();
-        if(tapReductionTicks>0&&--tapReductionTicks==0)tapLimit=targetTapLimit;
-        // Stereo spacing lives in the read positions. No channel swaps or
-        // mid-side mixing: one input channel never feeds the opposite output.
-        outL=linearPCM(sum[0]/32768.*1.4,bits);
-        outR=linearPCM(sum[1]/32768.*1.4,bits);
     }
-private:
     int read(int ch,int delay)const{return data[ch][(write-delay)&(capacity-1)];}
-    int packet(int ch,int tap,bool previous,const Arithmetic& arithmetic)const {
+    template<class Quantize> int packet(int ch,int tap,bool previous,const Quantize& arithmetic)const {
         const auto& p=previous?heads.from:heads.to;const int first=tap*3;
         // Layout and Q15 fragment weights belong to the same stationary fade.
         // Unit-energy weights bound their absolute sum by sqrt(3), so all

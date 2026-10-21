@@ -283,7 +283,7 @@ inline std::vector<unsigned> render(const Values& v,int hovered=-1,const Present
     button(r,128,28,59,13,"Options",p.menu==Menu::Options);
     button(r,191,28,59,13,"Size",p.menu==Menu::Scale);
     button(r,254,28,59,13,"Help",p.menu==Menu::Help);
-    for(int id:dials){if(id==Clock||id==Bits)continue;const int s=slot(id),x=5+(s%4)*78,y=46+(s/4)*57;const int dialId=id==Tone&&p.toneLow?LowDamp:id;r.texture(x,y,76,54,6,4);r.frame(x,y,76,54,true,10,1);r.text(x+5,y+5,id==Bits?"BITS":id==Tone?"TONE":definitions[id].name,hovered==dialId?15:12);
+    for(int id:dials){if(id==Clock||id==Bits)continue;const int s=slot(id),x=5+(s%4)*78,y=46+(s/4)*57;const int dialId=id==Tone&&p.toneLow?LowDamp:id;r.texture(x,y,76,54,6,4);r.frame(x,y,76,54,true,10,1);r.text(x+5,y+5,definitions[id].name,hovered==dialId?15:12);
         if(id==Tone){button(r,x+35,y+4,17,12,"L",p.toneLow);button(r,x+55,y+4,17,12,"H",!p.toneLow);}
         const int cx=x+19,cy=y+32;for(int yy=-14;yy<=14;++yy)for(int xx=-14;xx<=14;++xx){const int d=xx*xx+yy*yy;if(d<=196){int shade=d>169?((xx+yy<0)?12:1):((xx+yy<0)?6:3);r.dot(cx+xx,cy+yy,shade);}}
         const double a=(135.+270*v[dialId])*3.141592653589793/180.;r.line(cx+int(4*std::cos(a)),cy+int(4*std::sin(a)),cx+int(11*std::cos(a)),cy+int(11*std::sin(a)),14);

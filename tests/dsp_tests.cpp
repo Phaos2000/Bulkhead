@@ -46,6 +46,27 @@ int main(int argc,char** argv){
     }
     check(pcmWord(std::numeric_limits<double>::quiet_NaN(),12)==0,"Invalid converter input is contained");
     {
+        bool exact=true;
+        for(int bits=8;bits<=16;++bits){const int levels=1<<(bits-1),step=1<<(16-bits);
+            for(int code=-levels;code<=levels;++code){const double centre=(code+.5)/levels;
+                for(double x:{centre,std::nextafter(centre,-std::numeric_limits<double>::infinity()),std::nextafter(centre,std::numeric_limits<double>::infinity())})for(bool truncate:{false,true}){
+                    const double scaled=std::clamp(x,-1.,1.)*levels;
+                    const int reference=int(truncate?std::trunc(scaled):std::round(scaled))*step;
+                    exact=exact&&pcmWord(x,bits,truncate)==std::clamp(reference,-32768,32768-step);
+                }
+            }
+        }
+        check(exact,"Optimized PCM rounding matches the standard at every half-code boundary and adjacent double in 8 through 16 bits");
+        exact=true;
+        for(int code=-129;code<=129;++code){const double centre=(code+.5)/128.;
+            for(double x:{centre,std::nextafter(centre,-std::numeric_limits<double>::infinity()),std::nextafter(centre,std::numeric_limits<double>::infinity())}){
+                const int reference=std::clamp(int(std::lround(std::clamp(x,-1.,1.)*128.))+128,0,255);
+                exact=exact&&SbPro2Dac::encode(x)==reference;
+            }
+        }
+        check(exact,"Optimized ADC and DAC conversion preserves every half-code boundary and adjacent double");
+    }
+    {
         Arithmetic rounded(10,0),truncated(10,1),blend(10,.5);const int64_t x=100LL*32768;
         check(rounded(x)==128&&truncated(x)==64&&blend(x)==96&&truncated(-x)==-64,"TRUNC discards low product bits symmetrically; transition blends the arithmetic");
         double d=0;check(parseValue(Clock,"11.025 kHz",d)&&plain(Clock,d)==11025&&parseValue(Decay,"25ms",d)&&std::abs(plain(Decay,d)-.025)<1e-12&&parseValue(Bits,"15.6",d)&&plain(Bits,d)==16&&!parseValue(Tone,"NaN",d)&&!parseValue(Size,"abc",d),"Typed values support units, clock choices, whole bits and invalid-input rejection");

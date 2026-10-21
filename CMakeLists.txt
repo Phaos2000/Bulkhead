@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(Bulkhead VERSION 1.0.0 LANGUAGES C CXX)
+project(Bulkhead VERSION 1.0.1 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 set(VST3_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/vendor/vst3sdk" CACHE PATH "Steinberg VST3 SDK")
@@ -69,3 +69,12 @@ target_compile_definitions(bulkhead_host_tests PRIVATE NOMINMAX WIN32_LEAN_AND_M
 target_link_libraries(bulkhead_host_tests PRIVATE sdk_hosting sdk user32 ole32)
 add_dependencies(bulkhead_host_tests Bulkhead)
 add_test(NAME bulkhead_editor COMMAND bulkhead_host_tests "$<TARGET_FILE:Bulkhead>")
+
+# Compare two built plugin binaries, including a previously released version.
+add_executable(bulkhead_compare tests/plugin_compare.cpp "${VST3_SDK_ROOT}/public.sdk/source/common/memorystream.cpp")
+target_include_directories(bulkhead_compare PRIVATE source)
+target_compile_definitions(bulkhead_compare PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_link_libraries(bulkhead_compare PRIVATE sdk_hosting sdk user32 ole32)
+if(MINGW)
+    target_link_options(bulkhead_compare PRIVATE -static -municode)
+endif()

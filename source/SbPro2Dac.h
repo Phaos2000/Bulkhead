@@ -7,6 +7,14 @@
 #include <cstdint>
 
 namespace bulkhead {
+// Exact half-away-from-zero rounding for finite PCM codes in [-32768,32768].
+// Testing the fractional part avoids both library calls and the double-rounding
+// error of adding 0.5 to a value immediately below a half-code boundary.
+inline int roundedPcmCode(double code) {
+    const int whole=int(code);
+    const double fraction=code-whole;
+    return whole+int(fraction>=.5)-int(fraction<=-.5);
+}
 // Original audio-path model, informed by DOSBox Staging's documented card
 // behaviour. No emulator source is incorporated. ISA/DMA/IRQ are not modelled.
 class SbPro2Dac {
@@ -19,7 +27,7 @@ public:
     }
     static uint8_t encode(double sample) {
         if(!std::isfinite(sample))return 128;
-        return uint8_t(std::clamp(int(std::lround(std::clamp(sample,-1.,1.)*128.))+128,0,255));
+        return uint8_t(std::clamp(roundedPcmCode(std::clamp(sample,-1.,1.)*128.)+128,0,255));
     }
     static double decode(uint8_t sample){return (int(sample)-128)/128.;}
     void prepare(double hostRate) {
