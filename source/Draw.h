@@ -163,10 +163,10 @@ inline RectF presetNextRect(){return RectF(114,28,13,13);}
 inline RectF menuRow(int visible){return RectF(13,float(65+visible*11),212,11);}
 inline RectF menuButton(int index){const int col=index%3,row=index/3;return RectF(float(13+col*74),float(153+row*24),68,17);}
 inline const char* hints[Count]={
- "SIZE 0.05X-32X / Chamber SCALE", "DECAY / 0.025-4S AT HIGH CLOCK", "DENSITY / 4-64 REFLECTIONS", "GEOMETRY / REFLECTION PATHS",
- "SCATTER / FRAGMENT SPACING AND IRREGULARITY", "L/H SELECT EDIT / BOTH CUT FILTERS STAY ACTIVE", "WIDTH 0-100% / WET STEREO SPREAD", "MIX / DRY-WET BALANCE",
- "OUTPUT -36 TO +12 DB", "CLOCK / 11.025 OR 22.05 KHZ", "RESOLUTION / 8  12  16 BIT PCM", "BYPASS / TAIL CONTINUES INTERNALLY", "BODY / LOW-MID WEIGHT AND SOFT LIMITING", "TRUNC / DISCARD LOW BITS IN INTERNAL MATH",
- "TONE L / BASS CUTOFF HZ / 0 IS OFF", "DITHER / TPDF AT INTERNAL STORAGE AND 8-BIT DAC", "ADC FILTER / OFF  3.2K  8.8K", "LEGACY DAC / UNUSED", "SB PRO 2 / 3.2 KHZ OUTPUT FILTER", "SOFTWARE TONE / L AND H FILTERS ENABLE", "ADC FILTER / 3.2 OR 8.8 KHZ"
+ "SIZE 0.05X-32X / Chamber SCALE", "DECAY / 0.025-4S AT HIGH CLOCK", "DENSITY / 16-24 NORMAL / 64 EXPERIMENTAL", "GEOMETRY / REFLECTION PATHS",
+ "SCATTER / FRAGMENT SPACING AND IRREGULARITY", "L/H SELECT EDIT / BOTH CUT FILTERS STAY ACTIVE", "WIDTH 0-100% / WET STEREO SPREAD", "MIX / REVERB AMOUNT BEFORE OUTPUT DAC",
+ "WET LEVEL -36 TO +12 DB BEFORE OUTPUT DAC", "CLOCK / 22K NORMAL / 11K ECONOMY-EXTREME", "RESOLUTION / 8  12  16 BIT PCM", "BYPASS / TAIL CONTINUES INTERNALLY", "BODY / LOW-MID WEIGHT AND SOFT LIMITING", "TRUNC / DISCARD LOW BITS IN INTERNAL MATH",
+ "TONE L / BASS CUTOFF HZ / 0 IS OFF", "DITHER / TPDF AT INTERNAL STORAGE AND 8-BIT DAC", "ADC FILTER / OFF  3.2K  8.8K", "SB PRO 2 / 3.2 KHZ OUTPUT FILTER", "ADC FILTER / 3.2 OR 8.8 KHZ"
 };
 inline std::string readout(int id,double n,double clockN=1.){char b[32]{};double p=id==Decay?decaySeconds(n,clockN):plain(id,n);if(id==LowDamp&&p==0.)return "OFF";if(id==Density){std::snprintf(b,sizeof(b),"%.0f",p);}else if(id==Clock||id==Tone||id==LowDamp){if(p>=1000)std::snprintf(b,sizeof(b),"%.1fK",p/1000);else std::snprintf(b,sizeof(b),"%.0fHZ",p);}else if(id==Size)std::snprintf(b,sizeof(b),p<10?"%.2fX":"%.1fX",p);else if(id==Decay)std::snprintf(b,sizeof(b),p<10?"%.2fS":p<100?"%.1fS":"%.0fS",p);else if(id==Bits)std::snprintf(b,sizeof(b),"%.0f",p);else if(id==Output)std::snprintf(b,sizeof(b),"%+.1f",p);else std::snprintf(b,sizeof(b),"%.0f%%",p);return b;}
 inline void button(Raster& r,int x,int y,int w,int h,const std::string& name,bool pressed=false,bool enabled=true) {
@@ -178,10 +178,10 @@ inline void optionRow(Raster& r,int y,const char* label,const char* detail,const
     r.text(53,y+4,label,13);r.text(53,y+19,detail,11,1,27);
     r.text(235,y+14,state,pressed?14:12);
 }
-inline void overlay(Raster& r,const Presentation& p) {
+inline void overlay(Raster& r,const Presentation& p,const Values& v) {
     if(p.menu==Menu::None)return;
     if(p.menu==Menu::Options) {
-        r.texture(35,37,250,193,6,3);r.frame(35,37,250,193,false,13,0);
+        r.texture(35,37,250,171,6,3);r.frame(35,37,250,171,false,13,0);
         r.text(45,44,"Options",14);r.text(184,44,"Click to close",11);
         r.text(45,59,"AUDIO I/O",30);r.line(105,62,274,62,7);
         const auto row=[&](int y,const char* label,const char* detail,const std::string& state,bool active){
@@ -305,7 +305,7 @@ inline std::vector<unsigned> render(const Values& v,int hovered=-1,const Present
     digitalButton(bitsRect(),"Bits",std::to_string(int(bitDepths[int(std::lround(v[Bits]*2))])),p.pressedDigital==Bits);
     digitalButton(truncRect(),"Truncate",v[Truncate]>=.5?"On":"Off",v[Truncate]>=.5);
     digitalButton(ditherRect(),"Dither",v[Dither]>=.5?"On":"Off",v[Dither]>=.5);
-    overlay(r,p);
+    overlay(r,p,v);
     r.rect(5,221,310,15,25);r.frame(5,221,310,15,true,30,24);
     r.text(9,225,!p.status.empty()?p.status:hovered>=0?hints[hovered]:"SHIFT: FINE / DOUBLE-CLICK: RESET / WHEEL: NUDGE",30,1,50);
 

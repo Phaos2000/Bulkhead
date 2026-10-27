@@ -1,4 +1,21 @@
+> Historical development notes, superseded by Bulkhead 2.0.0. Current routing,
+> memory and compatibility decisions are in [the authenticity audit](docs/AUTHENTICITY-AUDIT.md).
+> Direct/legacy options and session migration described below were removed.
+> DOS work remains paused and is not validated against the version 2 API.
+
 # Bulkhead: 1994 systems-programmer audit
+
+## Current 1.1.0 checkpoint
+
+See [docs/1994-CHECKPOINT.md](docs/1994-CHECKPOINT.md) for the new shared-history
+design, historical sources, mono investigation, state migration, and validation.
+New instances use direct dry, 20 shared packets, 22.05 kHz nominal stereo and
+no dither. Legacy mode retains the design below for existing projects.
+Shared mode halves the active history/read traffic and precombines coefficients;
+the VST still reserves the legacy second ring for allocation-free mode changes.
+This is not a measured 486 real-time implementation.
+
+## Retained legacy design and audit
 
 I treat the sound card as PCM I/O hardware. The reverb is my program's job on
 the 486. I would first capture or load a sample into RAM, then process it into

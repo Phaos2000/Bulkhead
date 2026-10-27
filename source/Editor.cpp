@@ -20,7 +20,7 @@ public:
         Gdiplus::GdiplusStartupInput init;Gdiplus::GdiplusStartup(&gdip,&init,nullptr);
     }
     ~Editor() override {
-        close();if(--instances==0)UnregisterClassW(L"Bulkhead.Editor.055",ghInst);
+        close();if(--instances==0)UnregisterClassW(L"Bulkhead2.Editor.200",ghInst);
         destroyCursor();controller->release();if(gdip)Gdiplus::GdiplusShutdown(gdip);
     }
     DEFINE_INTERFACES
@@ -38,7 +38,7 @@ public:
         if(!parent||isPlatformTypeSupported(type)!=kResultTrue||window)return kResultFalse;
         if(!hostScale)dpi=windowDpi(static_cast<HWND>(parent));
         requestSize();
-        WNDCLASSW wc{};wc.hInstance=ghInst;wc.lpfnWndProc=proc;wc.lpszClassName=L"Bulkhead.Editor.055";wc.style=CS_DBLCLKS;
+        WNDCLASSW wc{};wc.hInstance=ghInst;wc.lpfnWndProc=proc;wc.lpszClassName=L"Bulkhead2.Editor.200";wc.style=CS_DBLCLKS;
         RegisterClassW(&wc);updateCursor();
         window=CreateWindowExW(0,wc.lpszClassName,L"BULKHEAD - Phaos",WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS|WS_TABSTOP,
             0,0,rect.getWidth(),rect.getHeight(),static_cast<HWND>(parent),nullptr,ghInst,this);
@@ -209,7 +209,7 @@ private:
             if(framePixels.empty()||now-lastFrame>=40){
                 presentation.sbName=controller->getParamNormalized(SbFilter)>=.5?"On":"Off";
                 presentation.aaName=controller->getParamNormalized(AntiAlias)<.5?"Off":controller->getParamNormalized(AdcFilter)<.5?"3.2k":"8.8k";
-                presentation.toneName=controller->getParamNormalized(ToneFilter)>=.5?"On":"Off";
+                presentation.toneName="On";
                 framePixels=ui::render(values(),hover,presentation);lastFrame=now;needsFrame=false;
             }
             Gdiplus::Bitmap bitmap(ui::PW,ui::PH,ui::PW*4,PixelFormat32bppARGB,reinterpret_cast<BYTE*>(framePixels.data()));

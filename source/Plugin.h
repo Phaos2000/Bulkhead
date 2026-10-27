@@ -9,8 +9,8 @@
 #include <atomic>
 
 namespace bulkhead {
-inline const Steinberg::FUID processorID(0xC8432DA1,0xB5794AC2,0xA8E3E702,0x6D548F19);
-inline const Steinberg::FUID controllerID(0x731B5E94,0xA8624D70,0x926CD1A8,0xF3B807E2);
+inline const Steinberg::FUID processorID(0x28E61F0E,0x7A9647DE,0xA234BC12,0x7A5A5656);
+inline const Steinberg::FUID controllerID(0xC33ED4EE,0xD3F34142,0x8CBC0DFF,0x090C02FF);
 class Processor final : public Steinberg::Vst::AudioEffect {
 public:
     Processor();

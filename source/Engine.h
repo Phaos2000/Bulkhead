@@ -7,6 +7,9 @@
 #include "SbPro2Adc.h"
 #include <vector>
 #include <cstdint>
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
 #if defined(_M_X64) || defined(__SSE__)
 #include <xmmintrin.h>
 #endif
@@ -26,6 +29,35 @@ struct Ramp {
     void reset(double v){value=target=v;step=0;left=0;}
     void aim(double v,int samples){if(v==target)return;target=v;left=std::max(1,samples);step=(v-value)/left;}
     double next(){if(left>0&&--left==0)value=target;else if(left>0)value+=step;return value;}
+};
+// Track only parameters that are actually moving. Settled processing advances
+// no parameter ramps, while every automated ramp retains the original arithmetic.
+struct ParameterRamps {
+    std::array<Ramp,Count> values{};
+    static_assert(Count<=32,"Parameter ramp mask must cover every parameter");
+    uint32_t moving=0;
+    Ramp& operator[](int id){return values[id];}
+    const Ramp& operator[](int id)const{return values[id];}
+    void reset(const Values& v){moving=0;for(int i=0;i<Count;++i)values[i].reset(v[i]);}
+    void aim(int id,double value,int length){
+        values[id].aim(value,length);
+        if(values[id].left>0)moving|=uint32_t(1)<<id;
+    }
+    void advance(){
+        uint32_t pending=moving;
+        while(pending){unsigned id=0;
+#if defined(_MSC_VER)
+            unsigned long first=0;_BitScanForward(&first,pending);id=unsigned(first);
+#elif defined(__GNUC__)
+            id=unsigned(__builtin_ctz(pending));
+#else
+            while(!(pending&(uint32_t(1)<<id)))++id;
+#endif
+            values[id].next();
+            if(values[id].left==0)moving&=~(uint32_t(1)<<id);
+            pending&=pending-1;
+        }
+    }
 };
 // Signed linear PCM, matching the storage model of PC sample processing.
 // Integer settings produce exactly 8..16-bit samples. During automation only,
@@ -106,39 +138,41 @@ private:
 class Chamber {
 public:
     static constexpr int maxTaps=64;
-    static constexpr int capacity=131072; // 512 KiB total, two signed 16-bit rings.
+    static constexpr int capacity=131072; // 256 KiB: one signed 16-bit wet history.
     void prepare(double rate,const Values& v=defaults()) {
         maxRate=sr=rate;targets=v;for(auto& n:targets)n=clean(n);
-        for(auto& ch:data)ch.assign(capacity,0);
+        data.assign(capacity,0);
         reset();
     }
     void reset() {
-        for(auto& ch:data)std::fill(ch.begin(),ch.end(),0);
-        write=0;low[0]=low[1]=lowBand[0]=lowBand[1]=0;
+        std::fill(data.begin(),data.end(),0);
+        write=validHistory=0;low[0]=lowBand[0]=0;
         lowEnable.reset(targets[LowDamp]>0.?1.:0.);controlClock=0;cached.fill(-1.);cachedRate=-1.;
-        for(int i=0;i<Count;++i)controls[i].reset(targets[i]);
+        controls.reset(targets);
         configure(true);
     }
     void set(int id,double value) {
         if(id<0||id>=Count||!std::isfinite(value))return;
-        targets[id]=canonical(id,value);controls[id].aim(targets[id],std::max(1,int(sr*.05)));
+        targets[id]=canonical(id,value);controls.aim(id,targets[id],std::max(1,int(sr*.05)));
         if(id==LowDamp)lowEnable.aim(targets[id]>0.?1.:0.,std::max(1,int(sr*.05)));
     }
     void set(const Values& v){for(int i=0;i<Count;++i)set(i,v[i]);}
     void clock(double rate){sr=std::clamp(rate,1.,maxRate);}
     const Values& parameters()const{return targets;}
-    size_t bytes()const{return (data[0].size()+data[1].size())*sizeof(int16_t);}
+    size_t bytes()const{return data.size()*sizeof(int16_t);}
+    size_t activeBytes()const{return bytes();}
     size_t lastActiveTaps()const{return activeTaps;}
     void tick(double inL,double inR,double& outL,double& outR) {
-        for(auto& c:controls)c.next();
+        controls.advance();
         if(controlClock--==0){configure(false);controlClock=31;}
         const double bits=cachedBits;
         const Arithmetic& arithmetic=cachedArithmetic;
-        const int a=std::clamp(nearestInt(filter.next()*32768),1,32767);
-        const int bassA=std::clamp(nearestInt(bassFilter.next()*32768),1,32767);
+        if(filter.left>0)filterWord=std::clamp(nearestInt(filter.next()*32768),1,32767);
+        if(bassFilter.left>0)bassWord=std::clamp(nearestInt(bassFilter.next()*32768),1,32767);
+        const int a=filterWord,bassA=bassWord;
         const double lowMix=lowEnable.next();
-        const double input[2]={inL,inR};
-        for(int ch=0;ch<2;++ch) {
+        const double input[1]={(inL+inR)*.5};
+        {const int ch=0;
             const int x=pcmWord(input[ch],bits);
             int bass=arithmetic(int32_t(lowBand[ch])*(32768-bassA)+int32_t(x)*bassA);
             if(x==0&&std::abs(bass)>=std::abs(lowBand[ch]))bass=0;
@@ -149,54 +183,47 @@ public:
             // A rounded recursive filter must not stick at one silent LSB.
             if(x==0&&std::abs(filtered)>=std::abs(low[ch]))filtered=0;
             low[ch]=std::clamp(filtered,-32768,32767);
-            data[ch][write]=pcmWord(low[ch]/32768.,bits);
+            data[write]=pcmWord(low[ch]/32768.,bits);
         }
         int32_t sum[2]{};
         const bool moving=heads.moving();
         const int fadeQ=moving?nearestInt(heads.blend()*32768):32768;
-        if(arithmetic.fraction==0.&&arithmetic.truncate==0.)reflect(sum,moving,fadeQ,FixedArithmetic<false>{arithmetic.lower});
-        else if(arithmetic.fraction==0.&&arithmetic.truncate==1.)reflect(sum,moving,fadeQ,FixedArithmetic<true>{arithmetic.lower});
-        else reflect(sum,moving,fadeQ,arithmetic);
+        if(arithmetic.fraction==0.&&arithmetic.truncate==0.)reflectShared(sum,moving,fadeQ,FixedArithmetic<false>{arithmetic.lower});
+        else if(arithmetic.fraction==0.&&arithmetic.truncate==1.)reflectShared(sum,moving,fadeQ,FixedArithmetic<true>{arithmetic.lower});
+        else reflectShared(sum,moving,fadeQ,arithmetic);
         write=(write+1)&(capacity-1);
+        validHistory=std::min(capacity,validHistory+1);
         heads.advance();
         if(tapReductionTicks>0&&--tapReductionTicks==0)tapLimit=targetTapLimit;
-        // Stereo spacing lives in the read positions. No channel swaps or
-        // mid-side mixing: one input channel never feeds the opposite output.
+        // Stereo comes from the balanced packet pan coefficients.
         outL=linearPCM(sum[0]/32768.*1.4,bits);
         outR=linearPCM(sum[1]/32768.*1.4,bits);
     }
 private:
-    template<class Quantize> void reflect(int32_t (&sum)[2],bool moving,int fadeQ,const Quantize& arithmetic){
-        if(moving)reflect<true>(sum,fadeQ,arithmetic);else reflect<false>(sum,fadeQ,arithmetic);
+    // Shared history is read once per fragment. Stereo comes from fixed packet
+    // pan coefficients, precombined with packet gain at control rate. No extra
+    // packet-gain multiply or intermediate packet clipping in this new mode.
+    template<class Quantize> void reflectShared(int32_t (&sum)[2],bool moving,int fadeQ,const Quantize& arithmetic){
+        if(moving)reflectShared<true>(sum,fadeQ,arithmetic);else reflectShared<false>(sum,fadeQ,arithmetic);
     }
-    template<bool Moving,class Quantize> void reflect(int32_t (&sum)[2],int fadeQ,const Quantize& arithmetic){
+    template<bool Moving,class Quantize> void reflectShared(int32_t (&sum)[2],int fadeQ,const Quantize& arithmetic){
         activeTaps=0;
-        for(int i=0;i<tapLimit;++i) {
-            int gain=gainWords[i];
-            if(gains[i].left>0)
-                gain=gainWords[i]=std::clamp(nearestInt(gains[i].next()*32768),-32768,32767);
-            if(!gain)continue;++activeTaps;
-            for(int ch=0;ch<2;++ch) {
-                // Independent channels; each path is a short signed packet,
-                // rather than one full-gain delayed copy of the input.
-                int sample=packet(ch,i,false,arithmetic);
-                if constexpr(Moving)sample=int((int32_t(packet(ch,i,true,arithmetic))*(32768-fadeQ)+int32_t(sample)*fadeQ)/32768);
-                // Scale each product before the sum: bounded 32-bit accumulation.
-                sum[ch]+=arithmetic(int32_t(sample)*gain);
+        for(int i=0;i<tapLimit;++i){
+            const auto& first=heads.to[i*3];const auto& oldFirst=heads.from[i*3];
+            const bool currentActive=first[1]||first[2],previousActive=Moving&&(oldFirst[1]||oldFirst[2]);
+            if(!currentActive&&!previousActive)continue;++activeTaps;
+            int32_t current[2]{},previous[2]{};
+            for(int f=0;f<3;++f){const int k=i*3+f;const auto& p=heads.to[k];
+                if(currentActive){const int x=read(p[0]);for(int ch=0;ch<2;++ch)current[ch]+=int32_t(x)*p[1+ch];}
+                if constexpr(Moving){if(previousActive){const auto& q=heads.from[k];const int x=read(q[0]);for(int ch=0;ch<2;++ch)previous[ch]+=int32_t(x)*q[1+ch];}}
+            }
+            for(int ch=0;ch<2;++ch){int sample=arithmetic(current[ch]);
+                if constexpr(Moving)sample=int((int32_t(arithmetic(previous[ch]))*(32768-fadeQ)+int32_t(sample)*fadeQ)/32768);
+                sum[ch]+=sample;
             }
         }
     }
-    int read(int ch,int delay)const{return data[ch][(write-delay)&(capacity-1)];}
-    template<class Quantize> int packet(int ch,int tap,bool previous,const Quantize& arithmetic)const {
-        const auto& p=previous?heads.from:heads.to;const int first=tap*3;
-        // Layout and Q15 fragment weights belong to the same stationary fade.
-        // Unit-energy weights bound their absolute sum by sqrt(3), so all
-        // three products fit a signed 32-bit accumulator even at full input.
-        int32_t shards=0;
-        for(int fragment=0;fragment<3;++fragment)
-            shards+=int32_t(read(ch,p[first+fragment][ch]))*p[first+fragment][2];
-        return std::clamp(arithmetic(shards),-32768,32767);
-    }
+    int read(int delay)const{return delay>validHistory?0:data[(write-delay)&(capacity-1)];}
     static double coefficient(double value,double truncate) {
         const double coarse=std::trunc(value*1024.)/1024.;
         return value+truncate*(coarse-value);
@@ -230,16 +257,12 @@ private:
             const double folded=u+folding*(centre-u);
             const double jitter=(random(i+17)-.5)*scatter*.40;
             const double time=early+span*std::pow(std::clamp(folded+jitter*u*(1-u),.0001,.9999),exponent);
-            const double spread=(random(i+217)-.5)*(.002+time*.037)*width;
             const double fragmentScale=(.2+2.8*scatter*scatter)*(.18+1.62*geometry);
             const int first=std::max(1,nearestInt((23+(i*79)%239)*fragmentScale));
             const int second=first+std::max(1,nearestInt((47+(i*113)%397)*fragmentScale));
             const int offsets[]={0,first,second};
-            for(int fragment=0;fragment<3;++fragment)positions[i*3+fragment][2]=fragmentWords[fragment];
-            for(int ch=0;ch<2;++ch){
-                const int base=std::clamp(int(maxRate*std::max(1./maxRate,time+(ch==0?spread:-spread))),1,capacity-1-second);
-                for(int fragment=0;fragment<3;++fragment)positions[i*3+fragment][ch]=base+offsets[fragment];
-            }
+            const int base=std::clamp(int(maxRate*std::max(1./maxRate,time)),1,capacity-1-second);
+            for(int fragment=0;fragment<3;++fragment)positions[i*3+fragment][0]=base+offsets[fragment];
             // A continuous count admits one reflection at a time without switches.
             const double enabled=std::clamp(density-i,0.,1.);
             const double polarity=(i&2)?1.-1.8*scatter:1.;
@@ -254,29 +277,43 @@ private:
             energy+=weights[i]*weights[i];
         }
         const double normalization=1./std::sqrt(std::max(energy,1.e-12));
+        std::array<std::array<double,2>,maxTaps> sharedGains{};
+        double channelEnergy[2]{};
+        {
+            for(int i=0;i<maxTaps;++i){
+                const double g=coefficient(weights[i]*normalization,controls[Truncate].value);
+                const double pan=(random(i+217)-.5)*width*pi*.5;
+                sharedGains[i]={g*std::cos(pi*.25+pan),g*std::sin(pi*.25+pan)};
+                for(int ch=0;ch<2;++ch)channelEnergy[ch]+=sharedGains[i][ch]*sharedGains[i][ch];
+            }
+            // Balance the actual decay-weighted packet set, not the unweighted
+            // pan distribution. Preserve total nominal energy, half per side.
+            // Each normalized packet gain remains bounded by sqrt(0.5).
+            for(int ch=0;ch<2;++ch){const double scale=channelEnergy[ch]>0.?std::sqrt(.5/channelEnergy[ch]):0.;
+                for(auto& gain:sharedGains)gain[ch]*=scale;
+            }
+        }
         const int wantedTaps=std::clamp(int(std::ceil(density)),4,maxTaps);
         if(snap){tapLimit=targetTapLimit=wantedTaps;tapReductionTicks=0;}
         else {tapLimit=std::max(tapLimit,wantedTaps);targetTapLimit=wantedTaps;tapReductionTicks=std::max(32,int(sr*.025))+32;}
-        for(int i=0;i<maxTaps;++i){
-            const double g=coefficient(weights[i]*normalization,controls[Truncate].value);
-            if(snap){gains[i].reset(g);gainWords[i]=std::clamp(nearestInt(g*32768),-32768,32767);}
-            else gains[i].aim(g,std::max(32,int(sr*.012)));
-        }
+        for(int i=0;i<maxTaps;++i)for(int f=0;f<3;++f)for(int ch=0;ch<2;++ch)
+            positions[i*3+f][1+ch]=std::clamp(nearestInt(fragmentWords[f]*sharedGains[i][ch]),-32768,32767);
         if(snap)heads.reset(positions,int(sr*.018));else heads.request(positions,int(sr*.018));
         const double cutoff=std::min(sr*.45,plain(Tone,controls[Tone].value));
         const double a=std::max(1./32768.,coefficient(1.-std::exp(-2*pi*cutoff/sr),controls[Truncate].value));
         const double bassCutoff=std::min(sr*.4,plain(LowDamp,controls[LowDamp].value));
         const double bassA=std::max(1./32768.,coefficient(1.-std::exp(-2*pi*bassCutoff/sr),controls[Truncate].value));
-        if(snap){filter.reset(a);bassFilter.reset(bassA);}else{filter.aim(a,32);bassFilter.aim(bassA,32);}
+        if(snap){filter.reset(a);bassFilter.reset(bassA);filterWord=std::clamp(nearestInt(a*32768),1,32767);bassWord=std::clamp(nearestInt(bassA*32768),1,32767);}
+        else{filter.aim(a,32);bassFilter.aim(bassA,32);}
     }
     double maxRate=22050,sr=22050,cachedRate=-1,cachedBits=12.;
     Arithmetic cachedArithmetic{12.,0.};
-    int write=0,low[2]{},lowBand[2]{},controlClock=0,tapLimit=maxTaps,targetTapLimit=maxTaps,tapReductionTicks=0;
+    int write=0,validHistory=0,low[2]{},lowBand[2]{},controlClock=0,tapLimit=maxTaps,targetTapLimit=maxTaps,tapReductionTicks=0;
     size_t activeTaps=0;
-    std::array<std::vector<int16_t>,2> data;
-    ReadHeads<maxTaps*3,3> heads;std::array<Ramp,maxTaps> gains;
-    std::array<int,maxTaps> gainWords{};
-    Ramp filter,bassFilter,lowEnable;std::array<Ramp,Count> controls;Values targets=defaults(),cached{};
+    std::vector<int16_t> data;
+    ReadHeads<maxTaps*3,3> heads;
+    int filterWord=1,bassWord=1;
+    Ramp filter,bassFilter,lowEnable;ParameterRamps controls;Values targets=defaults(),cached{};
 };
 inline double bodyShape(double x,double amount) {
     if(!std::isfinite(x))return 0.;amount=clean(amount);
@@ -328,63 +365,58 @@ public:
         chamber.prepare(22050.,targets);dac.prepare(hostRate);adc.prepare(hostRate);reset();
     }
     void reset() {
-        for(int i=0;i<Count;++i)controls[i].reset(targets[i]);
+        controls.reset(targets);
         clockControl.reset(SbPro2Dac::playbackRate(plain(Clock,targets[Clock])));
         chamber.clock(clockControl.value);chamber.reset();
-        phase=1.;seconds=0.;rng=0x8372a4cdu;adcRng=0x591fc327u;captured[0]=captured[1]=0.;dac.reset();adc.reset();body.reset();controlClock=0;configure(true);
+        phase=1.;seconds=0.;rng=0x8372a4cdu;adcRng=0x591fc327u;
+        dac.reset();adc.reset();body.reset();controlClock=0;configure(true);
     }
-    void set(int id,double v) {
-        if(id<0||id>=Count||!std::isfinite(v))return;
-        targets[id]=canonical(id,v);
-        controls[id].aim(targets[id],std::max(1,int(hostRate*(id==Bypass?.025:.05))));
+    void set(int id,double value) {
+        if(id<0||id>=Count||!std::isfinite(value))return;
+        targets[id]=canonical(id,value);
+        controls.aim(id,targets[id],std::max(1,int(hostRate*(id==Bypass?.025:.05))));
         if(id==Clock)clockControl.aim(SbPro2Dac::playbackRate(plain(Clock,targets[Clock])),std::max(1,int(hostRate*.008)));
-        if(id<=Width||id==Bits||id==Truncate||id==LowDamp||id==ToneFilter)chamber.set(id,targets[id]);
+        if(id<=Width||id==Bits||id==Truncate||id==LowDamp)chamber.set(id,targets[id]);
     }
-    void set(const Values& v){for(int i=0;i<Count;++i)set(i,v[i]);}
+    void set(const Values& v){for(int id=0;id<Count;++id)set(id,v[id]);}
     const Values& parameters()const{return targets;}
     size_t bytes()const{return chamber.bytes();}
+    size_t activeBytes()const{return chamber.bytes();}
     double actualClock()const{return clockRate;}
     void tick(double l,double r,double& outL,double& outR) {
-        for(auto& c:controls)c.next();clockControl.next();
+        controls.advance();clockControl.next();
         if(controlClock--==0){configure(false);controlClock=31;}
-        const double bypass=controls[Bypass].value;
+        const double bypass=controls[Bypass].value,gain=outputGain.next();
         l=std::isfinite(l)?l:0.;r=std::isfinite(r)?r:0.;
         double fedL=0,fedR=0;
         adc.filter(l,r,controls[AntiAlias].value,controls[AdcFilter].value,fedL,fedR);
         seconds+=1./hostRate;phase+=clockRate/hostRate;
         while(phase>=1.) {
-            phase-=1.;
-            const double bits=8.+8.*controls[Bits].value;
-            double wetL,wetR;const double dither=controls[Dither].value*double(1<<(16-int(std::lround(bits))))/32768.;
+            phase-=1.;const double bits=8.+8.*controls[Bits].value;
+            const double dither=controls[Dither].value*double(1<<(16-int(std::lround(bits))))/32768.;
             const double adcDither=controls[Dither].value/128.;
-            // One ADC capture feeds both the direct path and the chamber.
-            // Hold the direct sample between input-clock ticks. Its dither
-            // stream is independent of all reverb processing and controls.
-            const double sourceL=captured[0]=SbPro2Adc::capture(fedL+(fedL==0.?0.:(randomDither(adcRng)-randomDither(adcRng))*adcDither));
-            const double sourceR=captured[1]=SbPro2Adc::capture(fedR+(fedR==0.?0.:(randomDither(adcRng)-randomDither(adcRng))*adcDither));
-            const double noiseL=sourceL==0.?0.:(randomDither()-randomDither())*dither;
-            const double noiseR=sourceR==0.?0.:(randomDither()-randomDither())*dither;
+            const double sourceL=SbPro2Adc::capture(fedL+(fedL==0.?0.:tpdf(adcRng)*adcDither));
+            const double sourceR=SbPro2Adc::capture(fedR+(fedR==0.?0.:tpdf(adcRng)*adcDither));
+            const double noiseL=sourceL==0.?0.:tpdf(rng)*dither,noiseR=sourceR==0.?0.:tpdf(rng)*dither;
+            double wetL,wetR;
             chamber.tick(linearPCM((sourceL+noiseL)*(1.-bypass),bits),linearPCM((sourceR+noiseR)*(1.-bypass),bits),wetL,wetR);
             const double shapedL=linearPCM(body.tick(0,wetL,controls[Body].value),bits);
             const double shapedR=linearPCM(body.tick(1,wetR,controls[Body].value),bits);
-            // The audible converter is always 8-bit. Dither belongs here too,
-            // not solely at a higher-precision internal input quantizer.
+            // Captured dry and processed wet share the one physical output path.
+            const double mix=controls[Mix].value;
+            const double outputL=sourceL+mix*shapedL*gain,outputR=sourceR+mix*shapedR*gain;
             const double outputDither=controls[Dither].value/128.;
-            const double dacNoiseL=shapedL==0.?0.:(randomDither()-randomDither())*outputDither;
-            const double dacNoiseR=shapedR==0.?0.:(randomDither()-randomDither())*outputDither;
-            dac.push(seconds-phase/clockRate,shapedL+dacNoiseL,shapedR+dacNoiseR);
+            const double dacNoiseL=outputL==0.?0.:tpdf(rng)*outputDither;
+            const double dacNoiseR=outputR==0.?0.:tpdf(rng)*outputDither;
+            dac.push(seconds-phase/clockRate,outputL+dacNoiseL,outputR+dacNoiseR);
         }
-        double held[2]{};dac.render(seconds,controls[SbFilter].value,held[0],held[1]);
-        const double mix=controls[Mix].value,gain=outputGain.next();
-        const double wet=mix*(1.-bypass);
-        // Mix is a reverb amount: the ADC direct level stays fixed. True host
-        // bypass still returns the original input, with the existing 25 ms fade.
-        outL=bypass==1.?l:(1.-bypass)*captured[0]+bypass*l+wet*held[0]*gain;
-        outR=bypass==1.?r:(1.-bypass)*captured[1]+bypass*r+wet*held[1]*gain;
+        double heldL,heldR;dac.render(seconds,controls[SbFilter].value,heldL,heldR);
+        outL=bypass==1.?l:(1.-bypass)*heldL+bypass*l;
+        outR=bypass==1.?r:(1.-bypass)*heldR+bypass*r;
     }
 private:
     static double randomDither(uint32_t& state){state^=state<<13;state^=state>>17;state^=state<<5;return double(state&0xffffu)/65535.;}
-    double randomDither(){return randomDither(rng);}
+    static double tpdf(uint32_t& state){const double first=randomDither(state);const double second=randomDither(state);return first-second;}
     void configure(bool snap) {
         clockRate=clockControl.value;chamber.clock(clockRate);body.configure(clockRate);
         const double db=plain(Output,controls[Output].value);
@@ -392,10 +424,8 @@ private:
         if(snap)outputGain.reset(g);else outputGain.aim(g,32);
     }
     double hostRate=48000,clockRate=21739,phase=1.,seconds=0.;
-    SbPro2Dac dac;SbPro2Adc adc;BodyStage body;
+    SbPro2Dac dac;SbPro2Adc adc;BodyStage body;Chamber chamber;
     uint32_t rng=0x8372a4cdu,adcRng=0x591fc327u;
-    double captured[2]{};
-    int controlClock=0;Chamber chamber;Values targets=defaults();
-    std::array<Ramp,Count> controls;Ramp outputGain,clockControl;
+    int controlClock=0;Values targets=defaults();ParameterRamps controls;Ramp outputGain,clockControl;
 };
 }

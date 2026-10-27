@@ -11,10 +11,10 @@
 namespace bulkhead {
 inline std::filesystem::path settingsDirectory() {
     wchar_t overridePath[32768]{};
-    const auto length=GetEnvironmentVariableW(L"BULKHEAD_SETTINGS_DIR",overridePath,32768);
+    const auto length=GetEnvironmentVariableW(L"BULKHEAD2_SETTINGS_DIR",overridePath,32768);
     if(length>0&&length<32768)return std::filesystem::path(overridePath);
     PWSTR path=nullptr;if(FAILED(SHGetKnownFolderPath(FOLDERID_RoamingAppData,0,nullptr,&path)))return {};
-    const auto result=std::filesystem::path(path)/L"Bulkhead";CoTaskMemFree(path);return result;
+    const auto result=std::filesystem::path(path)/L"Bulkhead2";CoTaskMemFree(path);return result;
 }
 inline int loadPreferredZoom() noexcept {
     try{const auto folder=settingsDirectory();if(folder.empty())return 3;int zoom=0;std::ifstream in(folder/L"ui-size.txt");if(in>>zoom&&zoom>=1&&zoom<=5)return zoom;}catch(...){}return 3;

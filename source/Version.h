@@ -4,5 +4,5 @@
 #pragma once
 
 namespace bulkhead {
-inline constexpr char versionString[] = "1.0.1";
+inline constexpr char versionString[] = "2.0.0";
 }

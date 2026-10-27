@@ -24,7 +24,7 @@ inline bool validPresetName(const std::string& name) {
 inline fs::path userPresetDirectory() {
     PWSTR path=nullptr;
     if(FAILED(SHGetKnownFolderPath(FOLDERID_RoamingAppData,0,nullptr,&path)))return {};
-    fs::path result=fs::path(path)/L"Bulkhead"/L"Presets";CoTaskMemFree(path);return result;
+    fs::path result=fs::path(path)/L"Bulkhead2"/L"Presets";CoTaskMemFree(path);return result;
 }
 struct PresetEntry { std::string name; fs::path path; Values values; bool factory=false; };
 class PresetLibrary {
@@ -49,14 +49,11 @@ public:
         std::error_code ec;if(fs::file_size(path,ec)>16384 || ec)return false;
         std::ifstream in(path);in.imbue(std::locale::classic());
         std::string magic;int version=0,count=0;
-        if(!(in>>magic>>version>>count)||magic!="BULKHEAD"||(version<1||version>5)||count!=(version==1?13:version==2?14:version==3?18:version==4?20:Count))return false;
+        if(!(in>>magic>>version>>count)||magic!="BULKHEAD2"||version!=1||count!=Count)return false;
         Values parsed=defaults();std::array<bool,Count> seen{};
-        for(int i=0;i<count;++i){int id=-1;double v=0;if(!(in>>id>>v)||id<0||id>=Count||seen[id]||!std::isfinite(v)||v<0||v>1)return false;parsed[id]=v;seen[id]=true;}
+        for(int i=0;i<count;++i){int id=-1;double v=0;if(!(in>>id>>v)||id<0||id>=count||seen[id]||!std::isfinite(v)||v<0||v>1)return false;parsed[id]=canonical(id,v);seen[id]=true;}
         in>>std::ws;if(!in.eof())return false;
-        if(version<3){const double legacyClock[]={8000.,11025.,16000.,22050.};parsed[Clock]=normalized(Clock,legacyClock[std::clamp(int(std::lround(parsed[Clock]*3)),0,3)]);parsed[Bits]=normalized(Bits,8.+8.*parsed[Bits]);parsed[Width]=normalized(Width,200.*parsed[Width]);}
-        if(version<4){parsed[Decay]=normalized(Decay,.025*std::pow(120./.025,parsed[Decay]));parsed[Density]=normalized(Density,4.+252.*parsed[Density]);}
-        if(version<5)parsed[LowDamp]=normalized(LowDamp,parsed[LowDamp]*300.);
-        parsed[ToneFilter]=1.;parsed[Bypass]=0.;values=parsed;return true;
+        parsed[Bypass]=0.;values=parsed;return true;
     }
     bool save(const std::string& name,const Values& values,bool overwrite,std::string& error) const {
         if(folder.empty()){error="PRESET FOLDER UNAVAILABLE";return false;}
@@ -70,7 +67,7 @@ public:
         auto temp=target;temp+=L".tmp-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(++serial);
         {
             std::ofstream out(temp,std::ios::trunc);out.imbue(std::locale::classic());
-            out<<"BULKHEAD 5 "<<Count<<"\n"<<std::setprecision(17);
+            out<<"BULKHEAD2 1 "<<Count<<"\n"<<std::setprecision(17);
             for(int i=0;i<Count;++i)out<<i<<" "<<(i==Bypass?0.:values[i])<<"\n";
             out.flush();if(!out){error="CANNOT WRITE PRESET";out.close();fs::remove(temp,ec);return false;}
         }

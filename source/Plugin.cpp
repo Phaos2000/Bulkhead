@@ -14,25 +14,19 @@ using namespace Steinberg;
 using namespace Steinberg::Vst;
 namespace bulkhead {
 namespace {
-constexpr int32 stateMagic=0x46524354, stateVersion=7;
+constexpr int32 stateMagic=0x46524354, stateVersion=10;
 bool readState(IBStream* stream,Values& v) {
     if(!stream)return false;
     IBStreamer s(stream,kLittleEndian);int32 magic=0,version=0,count=0;
-    if(!s.readInt32(magic)||magic!=stateMagic||!s.readInt32(version)||(version<1||version>stateVersion)||!s.readInt32(count)||count!=(version==1?12:version<4?13:version==4?14:version==5?18:version==6?20:Count))return false;
-    v=defaults();if(version==1)v[Body]=0.;
-    for(int i=0;i<count;++i)if(!s.readDouble(v[i])||!std::isfinite(v[i])||v[i]<0.||v[i]>1.)return false;
-    if(version<3){v[Clock]=normalized(Clock,500.*std::pow(44.,v[Clock]));v[Bits]=normalized(Bits,4.+12.*v[Bits]);}
-    else if(version<5){const double legacyClock[]={8000.,11025.,16000.,22050.};v[Clock]=normalized(Clock,legacyClock[std::clamp(int(std::lround(v[Clock]*3)),0,3)]);v[Bits]=normalized(Bits,8.+8.*v[Bits]);}
-    if(version<6){v[Decay]=normalized(Decay,.025*std::pow(120./.025,v[Decay]));v[Density]=normalized(Density,4.+252.*v[Density]);}
-    if(version<7)v[LowDamp]=normalized(LowDamp,v[LowDamp]*300.);
-    if(version<5)v[Width]=normalized(Width,200.*v[Width]);
-    for(int i=0;i<Count;++i)v[i]=canonical(i,v[i]);return true;
+    if(!s.readInt32(magic)||magic!=stateMagic||!s.readInt32(version)||version!=stateVersion||!s.readInt32(count)||count!=Count)return false;
+    for(int id=0;id<Count;++id){if(!s.readDouble(v[id])||!std::isfinite(v[id])||v[id]<0.||v[id]>1.)return false;v[id]=canonical(id,v[id]);}
+    return true;
 }
 class Parameter final : public Vst::Parameter {
 public:
     explicit Parameter(int i):Vst::Parameter(),id(i) {
-        info.id=i; info.flags=(i==Dac||i==ToneFilter)?ParameterInfo::kIsHidden:ParameterInfo::kCanAutomate|(i==Bypass?ParameterInfo::kIsBypass:0);
-        info.stepCount=(i==Bypass||i==Truncate||i==Dither||i==AntiAlias||i==Dac||i==SbFilter||i==ToneFilter||i==AdcFilter||i==Clock)?1:i==Bits?2:0;info.defaultNormalizedValue=normalized(i,definitions[i].initial);
+        info.id=i; info.flags=ParameterInfo::kCanAutomate|(i==Bypass?ParameterInfo::kIsBypass:0);
+        info.stepCount=(i==Bypass||i==Truncate||i==Dither||i==AntiAlias||i==SbFilter||i==AdcFilter||i==Clock)?1:i==Bits?2:0;info.defaultNormalizedValue=normalized(i,definitions[i].initial);
         UString(info.title,128).fromAscii(definitions[i].name);UString(info.shortTitle,128).fromAscii(definitions[i].name);
         UString(info.units,128).fromAscii(definitions[i].unit);valueNormalized=info.defaultNormalizedValue;
     }
@@ -42,8 +36,7 @@ public:
     bool fromString(const TChar* s,ParamValue& v) const override {
         char ascii[128]{};UString(const_cast<TChar*>(s),128).toAscii(ascii,128);
         if(id==Bypass){if(!std::strcmp(ascii,"Active")){v=0;return true;}if(!std::strcmp(ascii,"Bypassed")){v=1;return true;}}
-        if(id==Truncate||id==Dither||id==AntiAlias||id==SbFilter||id==ToneFilter){if(!std::strcmp(ascii,"On")){v=1;return true;}if(!std::strcmp(ascii,"Off")){v=0;return true;}}
-        if(id==Dac){if(!std::strcmp(ascii,"SB")){v=0;return true;}if(!std::strcmp(ascii,"GUS")){v=1;return true;}}
+        if(id==Truncate||id==Dither||id==AntiAlias||id==SbFilter){if(!std::strcmp(ascii,"On")){v=1;return true;}if(!std::strcmp(ascii,"Off")){v=0;return true;}}
         return parseValue(id,ascii,v);
     }
 private:int id;
@@ -171,6 +164,6 @@ void Controller::applyPreset(int index) {
 }
 }
 BEGIN_FACTORY_DEF("Phaos", "", "")
-DEF_CLASS2(INLINE_UID_FROM_FUID(bulkhead::processorID),PClassInfo::kManyInstances,kVstAudioEffectClass,"Bulkhead",Vst::kDistributable,"Fx|Reverb",bulkhead::versionString,kVstVersionString,bulkhead::Processor::create)
-DEF_CLASS2(INLINE_UID_FROM_FUID(bulkhead::controllerID),PClassInfo::kManyInstances,kVstComponentControllerClass,"Bulkhead Controller",0,"",bulkhead::versionString,kVstVersionString,bulkhead::Controller::create)
+DEF_CLASS2(INLINE_UID_FROM_FUID(bulkhead::processorID),PClassInfo::kManyInstances,kVstAudioEffectClass,"Bulkhead 2",Vst::kDistributable,"Fx|Reverb",bulkhead::versionString,kVstVersionString,bulkhead::Processor::create)
+DEF_CLASS2(INLINE_UID_FROM_FUID(bulkhead::controllerID),PClassInfo::kManyInstances,kVstComponentControllerClass,"Bulkhead 2 Controller",0,"",bulkhead::versionString,kVstVersionString,bulkhead::Controller::create)
 END_FACTORY

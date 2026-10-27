@@ -1,11 +1,19 @@
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/phaos)
 
-# Bulkhead
+# Bulkhead 2
 
 Bulkhead is a Windows x64 VST3 reverb by Phaos. It combines a finite
 signed reflection-packet engine with Sound Blaster Pro II ADC/DAC audio-path
 emulation: clocked unsigned 8-bit PCM conversion, held samples, and selectable
 input and output filters.
+
+Version 2.0.0 uses one fixed captured-dry signal path and one shared mono wet
+history with balanced stereo packet output. Normal operation is nominal
+22.05 kHz stereo, 20 packets and no dither; nominal 11.025 kHz is the
+economy/extreme setting. This version intentionally sounds different from 1.x.
+It has separate VST3 IDs, the host name **Bulkhead 2**, and the bundle
+`Bulkhead2.vst3`, so the original plugin can remain installed alongside it.
+There are no legacy routing modes or old-session migrations.
 
 The reverb runs between the input and output conversion stages. Its selectable
 8-, 12-, and 16-bit internal precision is separate from the 8-bit converters.
@@ -14,29 +22,45 @@ The reverb runs between the input and output conversion stages. Its selectable
 
 ## Download
 
-[Bulkhead for Windows x64 (VST3)](https://github.com/Phaos2000/Bulkhead/releases/latest)
+**[Download Bulkhead 2.0.0 for Windows x64](https://github.com/Phaos2000/Bulkhead/raw/refs/heads/main/downloads/2.0.0/Bulkhead2-2.0.0-Windows10-x64.zip)**
 
-Download the Windows x64 ZIP from the release assets. Extract it
-and copy the entire `Bulkhead.vst3` folder to your host's VST3 search directory.
-The automatic GitHub source archives contain source code, not an installed plugin.
+Extract the ZIP and copy the complete `Bulkhead2.vst3` folder to your host's
+VST3 directory, then rescan. Your host lists it as **Bulkhead 2**.
+
+[Original Bulkhead 1.0.1](https://github.com/Phaos2000/Bulkhead/releases/tag/v1.0.1)
+remains available for the original sound. Both plugins can stay installed.
+Version 2 intentionally changes the sound and does not import version 1 sessions
+or presets.
+
+[Checksums](downloads/2.0.0/SHA256SUMS.txt) ·
+[Complete source checkpoint](downloads/2.0.0/Bulkhead2-2.0.0-source-checkpoint.zip) ·
+[Validation checkpoint](docs/2.0.0-CHECKPOINT.md) ·
+[Authenticity audit](docs/AUTHENTICITY-AUDIT.md)
+
+This Windows build passed all five automated test suites and all 47 VST3
+validator tests. DAW listening acceptance remains open. DOS development is paused;
+real-time performance on a 486 has not been proved.
 
 See the [changelog](CHANGELOG.md) for version changes and validation results.
 
 ## Signal path
 
 ```text
-Host input -> optional input low-pass -> clocked 8-bit ADC -> held direct ----+
-                                                         |                 |
-                                                         v                 |
-                          integer PCM reflection chamber -> Body shaping    |
-                          -> 8-bit DAC -> held playback                     |
-                          -> optional output low-pass -> Output -> Mix -----+ -> output
+Host input -> optional input low-pass -> clocked unsigned 8-bit stereo ADC
+                                           |                  |
+                                           |       mono wet history
+                                           |       signed packets / stereo pan
+                                           |       Body -> Output -> Mix
+                                           +------------------+
+                                           summed captured dry + wet
+                                           -> one 8-bit stereo DAC
+                                           -> hold -> output filter -> host output
 ```
 
-The ADC capture feeds both the direct branch and the reverb. Mix controls how
-much reverb is added to the fixed-level ADC direct signal. At 0%, the direct
-signal still passes through input filtering, quantization, and sample hold.
-Full bypass fades to the original host input.
+Mix adds reverb to fixed-level captured dry before the final DAC. At 0%, audio
+still passes through both converters and their selected filters. The final DAC
+can clip the dry/wet sum at its 8-bit rails. Output changes wet level only.
+Full host bypass returns the original input.
 
 ## Converter emulation
 
@@ -68,17 +92,22 @@ and the [DOSBox Staging audio-path reference](https://github.com/dosbox-staging/
 
 ## Reverb design
 
-- Finite feed-forward reflection cloud with 4-64 packets per channel, each
-  comprising three weighted, signed delay reads.
-- Two 131,072-word signed 16-bit circular buffers: 512 KiB total delay memory.
+- Finite feed-forward cloud of three-fragment signed packets; 16-24 is the
+  normal design target, 20 the default, and 4-64 remains available. The upper
+  end is experimental for a 486 budget.
+- One 131,072-word signed 16-bit ring is allocated: 256 KiB of wet history.
 - Q15 reflection coefficients and bounded 32-bit products and accumulation.
   Host I/O, converter filter calculations, parameter smoothing, and parts of
   control generation use floating point.
 - Geometry changes packet clustering and fragment weights/spacing; Scatter
   changes timing irregularity and polarity. Changed layouts crossfade over
   18 ms using stationary read positions.
-- Left and right channels process independently. Width changes path spacing;
-  there is no cross-channel signal feed.
+- The chamber averages the stereo ADC captures, then applies deterministic
+  equal-power packet panning for stereo Width. Opposite-polarity inputs can
+  cancel.
+- The chamber combines fragment, packet and pan gains at control rate, removing
+  the separate packet-gain multiply and intermediate packet quantization/clipping.
+  This intentionally changes the wet sound.
 - Body applies wet-only low-mid shaping and bounded soft limiting before
   the final DAC conversion.
 - The reflection engine uses no recirculating comb/all-pass network, feedback
@@ -87,6 +116,9 @@ and the [DOSBox Staging audio-path reference](https://github.com/dosbox-staging/
 The arithmetic and memory budget draw on a DOS-era processing design. The
 plugin is a modern C++ implementation; real-time operation on a 486 has not
 been verified.
+The 16-24 packet range remains a Windows design target, not an established
+DX2/66 budget. See the [authenticity audit](docs/AUTHENTICITY-AUDIT.md) for the
+hardware contract, modern conveniences and current limits.
 
 ## Controls
 
@@ -94,16 +126,16 @@ been verified.
 |---|---|
 | Size | 0.05-32x reflection geometry scale |
 | Decay | 0.025-4 s at the 22.05 kHz reference; readout follows the actual selected clock |
-| Density | 4-64 reflection packets per channel |
+| Density | 4-64 packets; normal target 16-24, default 20 |
 | Geometry | Packet clustering and fragment shape |
 | Scatter | Reflection timing irregularity, fragment spacing, and polarity |
 | Tone L | Wet-path low cutoff, 0-2,000 Hz; 0 is Off |
 | Tone H | Wet-path high cutoff, 350-20,000 Hz, limited by the processing rate |
-| Width | Left/right path spacing, 0-100% |
+| Width | Stereo packet panning, 0-100% |
 | Body | Wet-path low-mid shaping and soft limiting, 0-100% |
 | Output | Wet-only gain, -36 to +12 dB |
-| Mix | Added reverb amount, 0-100%; ADC direct level stays fixed |
-| Clock | Nominal 11.025 / 22.05 kHz |
+| Mix | Added reverb amount, 0-100%; captured dry level stays fixed |
+| Clock | Nominal 22.05 kHz normal / 11.025 kHz economy-extreme |
 | Bits | 8 / 12 / 16-bit internal processing precision |
 | T | Truncate fixed-point products and coarsen control coefficients |
 | D | Enable dither |
@@ -124,8 +156,13 @@ been verified.
 - One custom arrow cursor with four colour choices, plus the system cursor.
 - INIT and five factory presets; user preset load/save/update/rename/delete.
 
-User presets are stored in `%APPDATA%/Bulkhead/Presets`. Size and cursor
-preferences also have fallbacks under `%APPDATA%/Bulkhead`.
+The current Windows candidate includes the weighted stereo-balance correction
+and settled-parameter/filter optimizations. The separate DOS feasibility study is
+paused and is not part of the VST3 audio engine. Its build targets are disabled
+by default; no DOS toolchain is required to build or use the Windows plugin.
+
+User presets are stored in `%APPDATA%/Bulkhead2/Presets`. Size and cursor
+preferences also have fallbacks under `%APPDATA%/Bulkhead2`.
 
 ## Build from source
 
@@ -135,8 +172,8 @@ with C++ workload. In PowerShell, from the repository root:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/fetch-sdk.ps1
 cmake -S . -B build-win -G "Visual Studio 18 2026" -A x64
-cmake --build build-win --config Release --target Bulkhead bulkhead_tests bulkhead_preset_tests bulkhead_preview
-ctest --test-dir build-win -C Release --output-on-failure -R "bulkhead_dsp|bulkhead_presets"
+cmake --build build-win --config Release --target Bulkhead bulkhead_tests bulkhead_direction_tests bulkhead_preset_tests bulkhead_host_tests bulkhead_preview bulkhead_integration validator
+ctest --test-dir build-win -C Release --output-on-failure
 ```
 
 Use the matching generator for another supported Visual Studio version.
@@ -144,7 +181,7 @@ The setup script fetches the official VST3 SDK at `v3.8.1_build_84`, commit
 `3cdf9ca5d1f5b1b21e0a86832aa4abe55607bd96`, with the base, cmake,
 pluginterfaces, and public.sdk submodules. VSTGUI is not required.
 
-The plugin bundle is produced at `build-win/VST3/Release/Bulkhead.vst3/`.
+The plugin bundle is produced at `build-win/VST3/Release/Bulkhead2.vst3/`.
 Copy the entire bundle to your host's VST3 search directory, commonly
 `C:/Program Files/Common Files/VST3`, and rescan.
 
@@ -152,12 +189,11 @@ Tests write diagnostic logs/audio and temporary presets under `artifacts/`.
 The diagnostic audio is generated from synthetic excitation. It is not a
 collection of sampled instruments or commercial recordings.
 
-For output parity and CPU comparisons with an earlier build, build the
-`bulkhead_compare` target. Run it with the old and new binary paths (the
-`Contents/x86_64-win/Bulkhead.vst3` files inside each bundle). It compares
-mono/stereo, 32/64-bit processing, sample rates, automation, and silence flags.
-Append `--benchmark` to measure seven alternating old/new runs per workload
-on one CPU core. Reported times are medians; results depend on the computer.
+The `bulkhead_integration` test compares the actual compiled plugin with the
+source engine across mono/stereo, 32/64-bit buffers, sample rates, automation,
+and silence flags. An optional second binary argument loads an original plugin
+alongside version 2 and checks that processor IDs differ. This is not a test
+of identical sound between versions.
 
 This repository contains source code. Historical archives, local build files,
 and downloaded reference artwork are excluded. Before redistributing a build,

@@ -12,12 +12,12 @@
 #include "SbPro2Dac.h"
 
 namespace bulkhead {
-enum Param { Size, Decay, Density, Geometry, Hull, Tone, Width, Mix, Output, Clock, Bits, Bypass, Body, Truncate, LowDamp, Dither, AntiAlias, Dac, SbFilter, ToneFilter, AdcFilter, Count };
+enum Param { Size, Decay, Density, Geometry, Hull, Tone, Width, Mix, Output, Clock, Bits, Bypass, Body, Truncate, LowDamp, Dither, AntiAlias, SbFilter, AdcFilter, Count };
 struct Definition { const char* name; const char* unit; double min, max, initial; bool log; };
 inline constexpr std::array<Definition, Count> definitions {{
     {"Size", "x", .05, 32., 2.4, true},
     {"Decay", "s", .025, 4., 1.5, true},
-    {"Density", "taps", 4., 64., 32., false},
+    {"Density", "taps", 4., 64., 20., false},
     {"Geometry", "%", 0., 100., 71., false},
     {"Scatter", "%", 0., 100., 70., false},
     {"Tone", "Hz", 350., 20000., 6500., true},
@@ -32,9 +32,7 @@ inline constexpr std::array<Definition, Count> definitions {{
     {"Low cutoff", "Hz", 0., 2000., 0., false},
     {"Dither", "", 0., 1., 0., false},
     {"ADC filter enable", "", 0., 1., 0., false},
-    {"Legacy DAC", "", 0., 1., 0., false},
     {"SB filter", "", 0., 1., 0., false},
-    {"Legacy tone enable", "", 0., 1., 1., false},
     {"ADC filter cutoff", "Hz", 3200., 8800., 8800., false}
 }};
 using Values = std::array<double, Count>;
@@ -60,8 +58,7 @@ inline double normalized(int id, double v) {
 }
 inline double canonical(int id,double n) {
     n=clean(n);
-    if(id==ToneFilter)return 1.; // Retain the state ID; main Tone controls always operate.
-    if(id==Bypass||id==Truncate||id==Dither||id==AntiAlias||id==Dac||id==SbFilter||id==ToneFilter||id==AdcFilter)return n>=.5?1.:0.;
+    if(id==Bypass||id==Truncate||id==Dither||id==AntiAlias||id==SbFilter||id==AdcFilter)return n>=.5?1.:0.;
     if(id==Bits)return normalized(id,plain(id,n));
     if(id==Clock)return normalized(id,plain(id,n));
     return n;
@@ -86,8 +83,7 @@ inline Values defaults() {
 }
 inline std::string display(int id, double n, bool units = true,double clockN=1.,bool clocked=false) {
     char b[64]{}; const double p = id==Decay&&clocked?decaySeconds(n,clockN):plain(id,n);
-    if (id == Truncate || id == Dither || id == AntiAlias || id == SbFilter || id == ToneFilter) return n >= .5 ? "On" : "Off";
-    if (id == Dac) return n >= .5 ? "GUS" : "SB";
+    if (id == Truncate || id == Dither || id == AntiAlias || id == SbFilter) return n >= .5 ? "On" : "Off";
     if (id == Bypass) return n >= .5 ? "Bypassed" : "Active";
     const int digits = (id == Size || id == Decay) ? (p < 10. ? 2 : 1) : (id == Output ? 1 : 0);
     std::snprintf(b,sizeof(b),"%.*f%s%s",digits,p,units ? " " : "",units ? definitions[id].unit : "");
@@ -97,8 +93,8 @@ inline constexpr int presetCount = 5;
 inline constexpr const char* presetNames[presetCount] = {"STARSHIP HULL", "GLASS SHARDS", "SMALL CHAMBER", "VAST WRECK", "COLD NEEDLES"};
 inline Values preset(int p) {
     constexpr double settings[presetCount][7] = {
-        {2.4,1.5,32,71,70,6500,75}, {.62,.85,56,93,85,14000,90},
-        {.14,.25,24,56,48,8100,60}, {16,4,64,86,74,4100,95},
+        {2.4,1.5,20,71,70,6500,75}, {.62,.85,24,93,85,14000,90},
+        {.14,.25,16,56,48,8100,60}, {16,4,24,86,74,4100,95},
         {.32,2.2,8,100,92,17500,100}
     };
     Values v = defaults(); p = std::clamp(p,0,presetCount-1);
