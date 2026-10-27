@@ -22,7 +22,7 @@ The reverb runs between the input and output conversion stages. Its selectable
 
 ## Download
 
-**[Download Bulkhead 2.0.0 for Windows x64](https://github.com/Phaos2000/Bulkhead/raw/refs/heads/main/downloads/2.0.0/Bulkhead2-2.0.0-Windows10-x64.zip)**
+**[Download Bulkhead 2.0.0 for Windows x64](https://github.com/Phaos2000/Bulkhead/releases/download/v2.0.0/Bulkhead2-2.0.0-Windows10-x64.zip)**
 
 Extract the ZIP and copy the complete `Bulkhead2.vst3` folder to your host's
 VST3 directory, then rescan. Your host lists it as **Bulkhead 2**.
@@ -32,9 +32,9 @@ remains available for the original sound. Both plugins can stay installed.
 Version 2 intentionally changes the sound and does not import version 1 sessions
 or presets.
 
-[Checksums](downloads/2.0.0/SHA256SUMS.txt) ·
-[Complete source checkpoint](downloads/2.0.0/Bulkhead2-2.0.0-source-checkpoint.zip) ·
-[Validation checkpoint](docs/2.0.0-CHECKPOINT.md) ·
+[Release and checksums](https://github.com/Phaos2000/Bulkhead/releases/tag/v2.0.0) ï¿½
+[Complete source checkpoint](https://github.com/Phaos2000/Bulkhead/releases/download/v2.0.0/Bulkhead2-2.0.0-source-checkpoint.zip) ï¿½
+[Validation checkpoint](docs/2.0.0-CHECKPOINT.md) ï¿½
 [Authenticity audit](docs/AUTHENTICITY-AUDIT.md)
 
 This Windows build passed all five automated test suites and all 47 VST3
