@@ -48,14 +48,14 @@ int wmain(int argc,wchar_t** argv){
     check(init&&finish&&getFactory&&init(),"Initialize VST3 module");if(!init||!finish||!getFactory)return 2;
     auto* factory=getFactory();PFactoryInfo info{};factory->getFactoryInfo(&info);check(!std::strcmp(info.vendor,"Phaos"),"Factory company is Phaos");
     TUID controllerID{},processorID{};
-    for(int i=0;i<factory->countClasses();++i){PClassInfo c{};factory->getClassInfo(i,&c);if(!std::strcmp(c.category,kVstComponentControllerClass))std::memcpy(controllerID,c.cid,16);if(!std::strcmp(c.category,kVstAudioEffectClass))std::memcpy(processorID,c.cid,16);}
+    for(int i=0;i<factory->countClasses();++i){PClassInfo c{};factory->getClassInfo(i,&c);if(!std::strcmp(c.category,kVstComponentControllerClass))std::memcpy(controllerID,c.cid,16);if(!std::strcmp(c.category,kVstAudioEffectClass)){std::memcpy(processorID,c.cid,16);check(!std::strcmp(c.name,"Bulkhead"),"Host-visible processor name is Bulkhead");}}
     HostApplication host;IEditController* controller=nullptr;
     check(factory->createInstance(controllerID,IEditController::iid,reinterpret_cast<void**>(&controller))==kResultOk&&controller,"Create controller from factory");if(!controller)return 2;
-    check(controller->initialize(&host)==kResultOk&&controller->getParameterCount()==Count,"Initialize all parameters including appended topology IDs");
+    check(controller->initialize(&host)==kResultOk&&controller->getParameterCount()==Count,"Initialize all parameters for the fixed routing");
     ParameterInfo pi{};controller->getParameterInfo(Truncate,pi);check(pi.id==Truncate&&pi.stepCount==1,"TRUNC is an automatable two-state parameter with a stable appended ID");
-    check(controller->getParameterCount()==19&&plain(Density,controller->getParamNormalized(Density))==20.,"Bulkhead 2 exposes no dry or chamber topology parameters");
-    {MemoryStream state;componentState(state,10);check(controller->setComponentState(&state)==kResultOk&&controller->getParamNormalized(Truncate)==1.,"Bulkhead 2 state restores current sound parameters");}
-    {MemoryStream state;componentState(state,7);check(controller->setComponentState(&state)!=kResultOk,"Bulkhead 1 states are not silently interpreted as Bulkhead 2");}
+    check(controller->getParameterCount()==19&&plain(Density,controller->getParamNormalized(Density))==20.,"Version 2 exposes no dry or chamber topology parameters");
+    {MemoryStream state;componentState(state,10);check(controller->setComponentState(&state)==kResultOk&&controller->getParamNormalized(Truncate)==1.,"Version 2 state restores current sound parameters");}
+    {MemoryStream state;componentState(state,7);check(controller->setComponentState(&state)!=kResultOk,"Bulkhead 1 states are not silently interpreted as version 2");}
     IComponent* processor=nullptr;factory->createInstance(processorID,IComponent::iid,reinterpret_cast<void**>(&processor));
     if(processor){processor->initialize(&host);MemoryStream old;componentState(old,10);MemoryStream current;check(processor->setState(&old)==kResultOk&&processor->getState(&current)==kResultOk,"Processor state round-trips without legacy migration");rewind(current);check(controller->setComponentState(&current)==kResultOk&&controller->getParamNormalized(Truncate)==1.,"Processor and controller agree on saved parameters");processor->terminate();processor->release();}
     HWND parent=CreateWindowExW(0,L"STATIC",L"Bulkhead test parent",WS_OVERLAPPEDWINDOW,0,0,1000,900,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);

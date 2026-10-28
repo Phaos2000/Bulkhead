@@ -164,6 +164,6 @@ void Controller::applyPreset(int index) {
 }
 }
 BEGIN_FACTORY_DEF("Phaos", "", "")
-DEF_CLASS2(INLINE_UID_FROM_FUID(bulkhead::processorID),PClassInfo::kManyInstances,kVstAudioEffectClass,"Bulkhead 2",Vst::kDistributable,"Fx|Reverb",bulkhead::versionString,kVstVersionString,bulkhead::Processor::create)
-DEF_CLASS2(INLINE_UID_FROM_FUID(bulkhead::controllerID),PClassInfo::kManyInstances,kVstComponentControllerClass,"Bulkhead 2 Controller",0,"",bulkhead::versionString,kVstVersionString,bulkhead::Controller::create)
+DEF_CLASS2(INLINE_UID_FROM_FUID(bulkhead::processorID),PClassInfo::kManyInstances,kVstAudioEffectClass,"Bulkhead",Vst::kDistributable,"Fx|Reverb",bulkhead::versionString,kVstVersionString,bulkhead::Processor::create)
+DEF_CLASS2(INLINE_UID_FROM_FUID(bulkhead::controllerID),PClassInfo::kManyInstances,kVstComponentControllerClass,"Bulkhead Controller",0,"",bulkhead::versionString,kVstVersionString,bulkhead::Controller::create)
 END_FACTORY

@@ -1,19 +1,20 @@
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/phaos)
 
-# Bulkhead 2
+# Bulkhead
 
 Bulkhead is a Windows x64 VST3 reverb by Phaos. It combines a finite
 signed reflection-packet engine with Sound Blaster Pro II ADC/DAC audio-path
 emulation: clocked unsigned 8-bit PCM conversion, held samples, and selectable
 input and output filters.
 
-Version 2.0.0 uses one fixed captured-dry signal path and one shared mono wet
+Version 2.0.1 uses one fixed captured-dry signal path and one shared mono wet
 history with balanced stereo packet output. Normal operation is nominal
 22.05 kHz stereo, 20 packets and no dither; nominal 11.025 kHz is the
 economy/extreme setting. This version intentionally sounds different from 1.x.
-It has separate VST3 IDs, the host name **Bulkhead 2**, and the bundle
-`Bulkhead2.vst3`, so the original plugin can remain installed alongside it.
-There are no legacy routing modes or old-session migrations.
+It has separate VST3 IDs, the host name **Bulkhead**, and the bundle
+`Bulkhead.vst3`, so version 1 can remain installed in a separate version subfolder.
+There are no legacy routing modes or version 1 session migrations.
+Version 2.0.0 sessions remain valid in 2.0.1.
 
 The reverb runs between the input and output conversion stages. Its selectable
 8-, 12-, and 16-bit internal precision is separate from the 8-bit converters.
@@ -22,19 +23,23 @@ The reverb runs between the input and output conversion stages. Its selectable
 
 ## Download
 
-**[Download Bulkhead 2.0.0 for Windows x64](https://github.com/Phaos2000/Bulkhead/releases/download/v2.0.0/Bulkhead2-2.0.0-Windows10-x64.zip)**
+**[Download Bulkhead 2.0.1 for Windows x64](https://github.com/Phaos2000/Bulkhead/releases/download/v2.0.1/Bulkhead-2.0.1-Windows10-x64.zip)**
 
-Extract the ZIP and copy the complete `Bulkhead2.vst3` folder to your host's
-VST3 directory, then rescan. Your host lists it as **Bulkhead 2**.
+Extract the ZIP and copy the complete `Bulkhead.vst3` folder to your host's
+VST3 directory, then rescan. Your host lists it as **Bulkhead**, version 2.0.1.
+Replace the earlier 2.0.0 bundle (`Bulkhead2.vst3`) rather than installing both
+version 2 bundles: they share the same plugin ID. To keep version 1 alongside
+version 2, place their complete bundles in separate version subfolders within
+your VST3 directory; both bundles are named `Bulkhead.vst3`.
 
 [Original Bulkhead 1.0.1](https://github.com/Phaos2000/Bulkhead/releases/tag/v1.0.1)
 remains available for the original sound. Both plugins can stay installed.
 Version 2 intentionally changes the sound and does not import version 1 sessions
 or presets.
 
-[Release and checksums](https://github.com/Phaos2000/Bulkhead/releases/tag/v2.0.0) �
-[Complete source checkpoint](https://github.com/Phaos2000/Bulkhead/releases/download/v2.0.0/Bulkhead2-2.0.0-source-checkpoint.zip) �
-[Validation checkpoint](docs/2.0.0-CHECKPOINT.md) �
+[Release and checksums](https://github.com/Phaos2000/Bulkhead/releases/tag/v2.0.1) �
+[Complete source checkpoint](https://github.com/Phaos2000/Bulkhead/releases/download/v2.0.1/Bulkhead-2.0.1-source-checkpoint.zip) �
+[Validation checkpoint](docs/2.0.1-CHECKPOINT.md) �
 [Authenticity audit](docs/AUTHENTICITY-AUDIT.md)
 
 This Windows build passed all five automated test suites and all 47 VST3
@@ -181,7 +186,7 @@ The setup script fetches the official VST3 SDK at `v3.8.1_build_84`, commit
 `3cdf9ca5d1f5b1b21e0a86832aa4abe55607bd96`, with the base, cmake,
 pluginterfaces, and public.sdk submodules. VSTGUI is not required.
 
-The plugin bundle is produced at `build-win/VST3/Release/Bulkhead2.vst3/`.
+The plugin bundle is produced at `build-win/VST3/Release/Bulkhead.vst3/`.
 Copy the entire bundle to your host's VST3 search directory, commonly
 `C:/Program Files/Common Files/VST3`, and rescan.
 

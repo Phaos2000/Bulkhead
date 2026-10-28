@@ -1,6 +1,7 @@
-# Authenticity audit — Bulkhead 2.0.0
+# Authenticity audit — Bulkhead 2.0.1
 
-2026-10-27. Windows checkpoint. The separate DOS study is preserved and paused.
+2026-10-27. Windows checkpoint. Version 2.0.1 corrects the product name to
+**Bulkhead**, retaining the 2.0.0 DSP, state and plugin IDs. The separate DOS study is preserved and paused.
 
 | Area | Contract and limits |
 |---|---|

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.1 - 2026-10-27
+
+- Name the plugin **Bulkhead** in the host, controller and bundle. The product
+  name has no version suffix; 2.0.1 is the version number. Bundle: `Bulkhead.vst3`.
+- Keep the version 2 processor/controller IDs, saved-state format, presets,
+  settings directory and DSP unchanged. Existing 2.0.0 sessions remain valid.
+- Replace the 2.0.0 bundle when upgrading. For side-by-side version 1 use,
+  keep the two complete bundles in separate version subfolders.
+
 ## 2.0.0 - 2026-10-27 Windows checkpoint
 
 This is an intentionally different sound and a separate plugin, **Bulkhead 2**.
